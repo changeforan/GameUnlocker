@@ -4,9 +4,9 @@
   **Zygisk module to unlock 90/120 FPS and bypass hardware whitelists** <br>
   *A high-performance native Daemon IPC that spoofs device identity seamlessly.*
 
-  [![Version](https://img.shields.io/github/v/tag/yadavnikhil03/GameUnlocker?label=version&color=blue)](https://github.com/yadavnikhil03/GameUnlocker/releases/latest)
-  [![Latest Downloads](https://img.shields.io/github/downloads/yadavnikhil03/GameUnlocker/latest/total?style=for-the-badge&color=orange&label=downloads)](https://github.com/yadavnikhil03/GameUnlocker/releases/latest)
-  [![License](https://img.shields.io/github/license/yadavnikhil03/GameUnlocker?style=for-the-badge&color=green)](LICENSE)
+  [![Version](https://img.shields.io/github/v/release/changeforan/GameUnlocker?label=version&color=blue)](https://github.com/changeforan/GameUnlocker/releases/latest)
+  [![Latest Downloads](https://img.shields.io/github/downloads/changeforan/GameUnlocker/latest/total?style=for-the-badge&color=orange&label=downloads)](https://github.com/changeforan/GameUnlocker/releases/latest)
+  [![License](https://img.shields.io/github/license/changeforan/GameUnlocker?style=for-the-badge&color=green)](LICENSE)
   [![Android](https://img.shields.io/badge/Android-13.0+-3DDC84?style=for-the-badge&logo=android)](https://www.android.com/)
   <p align="center">
     <a href="#features">Features</a> •
@@ -21,7 +21,7 @@
 
 > [!IMPORTANT]
 > **Device Compatibility** <br>
-> Due to the huge variety of Android devices and custom ROMs, the module might not work perfectly on every single phone. If you encounter any issues, don't worry! Please [open an issue](https://github.com/yadavnikhil03/GameUnlocker/issues) with your logs and device details so we can investigate and fix it.
+> Due to the huge variety of Android devices and custom ROMs, the module might not work perfectly on every single phone. If you encounter any issues, don't worry! Please [open an issue](https://github.com/changeforan/GameUnlocker/issues) with your logs and device details so we can investigate and fix it.
 
 > [!WARNING]
 > **Disclaimer** <br>
@@ -59,11 +59,19 @@ GameUnlocker takes heavy inspiration from industry-leading modules like COPG and
 ### Installation
 
 1. Ensure you have a **standalone Zygisk implementation** installed and active.
-2. Download the latest `GameUnlocker_v*.zip` from the [Releases page](https://github.com/yadavnikhil03/GameUnlocker/releases/latest).
+2. Download the latest `GameUnlocker_v*.zip` from the [Releases page](https://github.com/changeforan/GameUnlocker/releases/latest).
 3. Flash the ZIP file through your root manager (Magisk, KernelSU, or APatch).
 4. **Reboot** your device.
 
-The installer automatically detects your environment, verifies your Zygisk setup, and installs the correct ABI libraries. Future updates will be pushed directly to your root manager via the OTA update channel.
+The installer automatically detects your environment, verifies your Zygisk setup, and installs the correct ABI libraries. The OTA update feed follows the latest published stable release of this fork.
+
+### Releasing
+
+1. If needed, enable workflows in the fork's **Actions** tab.
+2. Set `version` and an increasing `versionCode` in `module.prop`, update the companion APK version in `app/build.gradle.kts` and add release notes to `changelog.md`. Merge those changes into `main`.
+3. Run **Build GameUnlocker Release** from `main` and test the ZIP from the run's artifacts. This does not create a release.
+4. Tag the tested commit with the exact `module.prop` version (for example, `v2.3.0`) and push the tag. A suffix such as `-rc1` marks a prerelease.
+5. Review and publish the draft from **Releases**. Keep the ZIP and generated `release.json` attached so the OTA feed can serve updates.
 
 ### Configuration
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.3.0
+
+- Added optional LSPosed integration and expanded game support.
+- Included the companion APK and its WebUI assets in the module ZIP.
+
 ## v2.2.0-rc1 (Pre-Release)
 
 ### Major Fix
