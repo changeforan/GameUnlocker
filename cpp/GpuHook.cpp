@@ -1,7 +1,7 @@
 #include "GpuHook.hpp"
 #include "logger.hpp"
 #include "SysPropHook.hpp"
-#include <dlfcn.h>
+#include <cstring>
 #include <bytehook.h>
 
 #define GL_VENDOR   0x1F00
@@ -105,84 +105,66 @@ static jstring my_GLES32_glGetString(JNIEnv* env, jclass clazz, jint name) {
     if (orig_GLES32_glGetString) return orig_GLES32_glGetString(env, clazz, name);
     return nullptr;
 }
-typedef const unsigned char* (*native_glGetString_t)(unsigned int);
-
-static native_glGetString_t orig_native_glGetString = nullptr;
-
 static const unsigned char* my_native_glGetString(unsigned int name) {
+    BYTEHOOK_STACK_SCOPE();
     if (name == GL_VENDOR) {
         return reinterpret_cast<const unsigned char*>(spoofed_gl_vendor());
     }
     if (name == GL_RENDERER) {
         return reinterpret_cast<const unsigned char*>(spoofed_gl_renderer());
     }
-    if (orig_native_glGetString) {
-        return orig_native_glGetString(name);
-    }
-    BYTEHOOK_CALL_PREV(my_native_glGetString, name);
-    return nullptr;
+    return BYTEHOOK_CALL_PREV(my_native_glGetString, name);
 }
 
-static void on_native_gl_hooked(bytehook_stub_t stub, int status, const char* caller_path,
-                                 const char* sym_name, void* new_func, void* prev_func, void* arg) {
+static void on_native_gl_hooked(bytehook_stub_t, int status, const char* caller_path,
+                                const char*, void*, void*, void*) {
     if (status == BYTEHOOK_STATUS_CODE_OK) {
-        if (prev_func && !orig_native_glGetString) {
-            orig_native_glGetString = reinterpret_cast<native_glGetString_t>(prev_func);
-        }
-        LOGI("GpuHook: native glGetString hook OK in '%s' (prev=%p)",
-             caller_path ? caller_path : "?", prev_func);
-    } else {
-        LOGW("GpuHook: native glGetString hook failed in '%s' (status=%d)",
+        LOGI("GpuHook: native OpenGL glGetString hook attached in '%s'", caller_path ? caller_path : "?");
+    } else if (status != BYTEHOOK_STATUS_CODE_NOSYM) {
+        LOGW("GpuHook: native OpenGL glGetString hook failed in '%s' (status=%d)",
              caller_path ? caller_path : "?", status);
     }
 }
-typedef void (*native_vkGetPhysicalDeviceProperties_t)(void*, VkPhysicalDeviceProperties*);
-
-static native_vkGetPhysicalDeviceProperties_t orig_vkGetPhysicalDeviceProperties = nullptr;
 
 static void my_vkGetPhysicalDeviceProperties(void* physicalDevice, VkPhysicalDeviceProperties* pProperties) {
-    if (orig_vkGetPhysicalDeviceProperties) {
-        orig_vkGetPhysicalDeviceProperties(physicalDevice, pProperties);
-    } else {
-        BYTEHOOK_CALL_PREV(my_vkGetPhysicalDeviceProperties, physicalDevice, pProperties);
-    }
+    BYTEHOOK_STACK_SCOPE();
+    BYTEHOOK_CALL_PREV(my_vkGetPhysicalDeviceProperties, physicalDevice, pProperties);
     if (pProperties) {
-        strncpy(pProperties->deviceName, spoofed_gl_renderer(), VK_MAX_PHYSICAL_DEVICE_NAME_SIZE - 1);
+        std::strncpy(pProperties->deviceName, spoofed_gl_renderer(), VK_MAX_PHYSICAL_DEVICE_NAME_SIZE - 1);
         pProperties->deviceName[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE - 1] = '\0';
         pProperties->vendorID = spoofed_vk_vendor_id();
         pProperties->deviceID = spoofed_vk_device_id();
     }
 }
-typedef void (*native_vkGetPhysicalDeviceProperties2_t)(void*, VkPhysicalDeviceProperties2*);
-
-static native_vkGetPhysicalDeviceProperties2_t orig_vkGetPhysicalDeviceProperties2 = nullptr;
 
 static void my_vkGetPhysicalDeviceProperties2(void* physicalDevice, VkPhysicalDeviceProperties2* pProperties) {
-    if (orig_vkGetPhysicalDeviceProperties2) {
-        orig_vkGetPhysicalDeviceProperties2(physicalDevice, pProperties);
-    } else {
-        BYTEHOOK_CALL_PREV(my_vkGetPhysicalDeviceProperties2, physicalDevice, pProperties);
-    }
+    BYTEHOOK_STACK_SCOPE();
+    BYTEHOOK_CALL_PREV(my_vkGetPhysicalDeviceProperties2, physicalDevice, pProperties);
     if (pProperties) {
-        strncpy(pProperties->properties.deviceName, spoofed_gl_renderer(), VK_MAX_PHYSICAL_DEVICE_NAME_SIZE - 1);
+        std::strncpy(pProperties->properties.deviceName, spoofed_gl_renderer(), VK_MAX_PHYSICAL_DEVICE_NAME_SIZE - 1);
         pProperties->properties.deviceName[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE - 1] = '\0';
         pProperties->properties.vendorID = spoofed_vk_vendor_id();
         pProperties->properties.deviceID = spoofed_vk_device_id();
     }
 }
 
-static void on_native_vk_hooked(bytehook_stub_t stub, int status, const char* caller_path,
-                                 const char* sym_name, void* new_func, void* prev_func, void* arg) {
+static void on_native_vk_hooked(bytehook_stub_t, int status, const char* caller_path,
+                                const char* sym_name, void*, void*, void*) {
     if (status == BYTEHOOK_STATUS_CODE_OK) {
-        if (prev_func) {
-            if (strcmp(sym_name, "vkGetPhysicalDeviceProperties") == 0 && !orig_vkGetPhysicalDeviceProperties) {
-                orig_vkGetPhysicalDeviceProperties = reinterpret_cast<native_vkGetPhysicalDeviceProperties_t>(prev_func);
-            } else if ((strcmp(sym_name, "vkGetPhysicalDeviceProperties2") == 0 || strcmp(sym_name, "vkGetPhysicalDeviceProperties2KHR") == 0) && !orig_vkGetPhysicalDeviceProperties2) {
-                orig_vkGetPhysicalDeviceProperties2 = reinterpret_cast<native_vkGetPhysicalDeviceProperties2_t>(prev_func);
-            }
-        }
-        LOGI("GpuHook: native %s hook OK in '%s'", sym_name, caller_path ? caller_path : "?");
+        LOGI("GpuHook: Vulkan %s hook attached in '%s'", sym_name, caller_path ? caller_path : "?");
+    } else if (status != BYTEHOOK_STATUS_CODE_NOSYM) {
+        LOGW("GpuHook: Vulkan %s hook failed in '%s' (status=%d)",
+             sym_name, caller_path ? caller_path : "?", status);
     }
+}
+
+static bool register_native_hook(const char* api, const char* symbol, void* proxy, bytehook_hooked_t callback) {
+    if (bytehook_hook_all(nullptr, symbol, proxy, callback, nullptr) == nullptr) {
+        LOGW("GpuHook: %s %s registration failed", api, symbol);
+        return false;
+    }
+    LOGI("GpuHook: %s %s registered", api, symbol);
+    return true;
 }
 
 bool GpuHook::onEnable(const Context& ctx) {
@@ -230,22 +212,26 @@ bool GpuHook::onEnable(const Context& ctx) {
         orig_GLES32_glGetString = reinterpret_cast<jstring (*)(JNIEnv*, jclass, jint)>(gles32_methods[0].fnPtr);
         anyJniHooked = true;
     }
-    bytehook_init(BYTEHOOK_MODE_AUTOMATIC, false);
-    bytehook_hook_all(nullptr, "glGetString",
-                      reinterpret_cast<void*>(my_native_glGetString),
-                      on_native_gl_hooked, nullptr);
-    bytehook_hook_all(nullptr, "vkGetPhysicalDeviceProperties",
-                      reinterpret_cast<void*>(my_vkGetPhysicalDeviceProperties),
-                      on_native_vk_hooked, nullptr);
-    bytehook_hook_all(nullptr, "vkGetPhysicalDeviceProperties2",
-                      reinterpret_cast<void*>(my_vkGetPhysicalDeviceProperties2),
-                      on_native_vk_hooked, nullptr);
-    bytehook_hook_all(nullptr, "vkGetPhysicalDeviceProperties2KHR",
-                      reinterpret_cast<void*>(my_vkGetPhysicalDeviceProperties2),
-                      on_native_vk_hooked, nullptr);
-    LOGI("GpuHook: vendor='%s' renderer='%s' (JNI hooked=%d, native hooks requested)",
+    LOGI("GpuHook: profile vendor='%s' renderer='%s'; Java OpenGL ES hook installed=%d",
          spoofed_gl_vendor(), spoofed_gl_renderer(), anyJniHooked ? 1 : 0);
-    return true;
+
+    const int initStatus = bytehook_init(BYTEHOOK_MODE_AUTOMATIC, false);
+    if (initStatus != BYTEHOOK_STATUS_CODE_OK) {
+        LOGE("GpuHook: ByteHook %s initialization failed (status=%d); native OpenGL and Vulkan disabled",
+             bytehook_get_version(), initStatus);
+        return anyJniHooked;
+    }
+    LOGI("GpuHook: ByteHook %s initialized (status=%d)", bytehook_get_version(), initStatus);
+
+    const bool nativeGl = register_native_hook("native OpenGL", "glGetString",
+        reinterpret_cast<void*>(my_native_glGetString), on_native_gl_hooked);
+    const bool vulkan = register_native_hook("Vulkan", "vkGetPhysicalDeviceProperties",
+        reinterpret_cast<void*>(my_vkGetPhysicalDeviceProperties), on_native_vk_hooked);
+    const bool vulkan2 = register_native_hook("Vulkan", "vkGetPhysicalDeviceProperties2",
+        reinterpret_cast<void*>(my_vkGetPhysicalDeviceProperties2), on_native_vk_hooked);
+    const bool vulkan2Khr = register_native_hook("Vulkan", "vkGetPhysicalDeviceProperties2KHR",
+        reinterpret_cast<void*>(my_vkGetPhysicalDeviceProperties2), on_native_vk_hooked);
+    return anyJniHooked || nativeGl || vulkan || vulkan2 || vulkan2Khr;
 }
 REGISTER_HOOK(GpuHook);
 }

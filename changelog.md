@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Backported ByteHook support for the linker mutex symbol used on Android 14 QPR2 and newer, including Android 17.
+- Separate Java OpenGL ES diagnostics from native OpenGL and Vulkan registration and attachment logs. Keep Java hooks working when native initialization fails.
+- Fixed automatic-mode ByteHook forwarding and stack cleanup in the existing GPU and system property hooks.
+
 ## v2.3.0
 
 - Added optional LSPosed integration and expanded game support.

@@ -10,7 +10,7 @@ public:
     GpuHook() = default;
     ~GpuHook() override = default;
     const char* getName() const override {
-        return "Adreno 750 GPU Spoof";
+        return "GPU Spoof";
     }
 
     bool isSupported(const Context& ctx) const override {
@@ -19,4 +19,4 @@ public:
 
     bool onEnable(const Context& ctx) override;
 };
-} 
+}

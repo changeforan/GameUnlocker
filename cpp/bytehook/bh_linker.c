@@ -123,8 +123,18 @@ int bh_linker_init(void) {
   if (__ANDROID_API_L__ == api_level || __ANDROID_API_L_MR1__ == api_level ||
       __ANDROID_API_N__ == api_level || __ANDROID_API_N_MR1__ == api_level ||
       bh_linker_g_dl_mutex_compatible) {
-    if (NULL == (bh_linker_g_dl_mutex = (pthread_mutex_t *)(bh_dl_dsym(linker, BH_CONST_SYM_G_DL_MUTEX))))
+    // Backport ByteHook v1.1.2's linker symbol selection. Android 14 QPR2
+    // renamed the mutex without changing the API level. NDK r25c predates API 34.
+    const int android_u_api = 34;
+    const char *mutex_symbol = api_level > android_u_api ? BH_CONST_SYM_G_DL_MUTEX_U_QPR2
+                                                        : BH_CONST_SYM_G_DL_MUTEX;
+    bh_linker_g_dl_mutex = (pthread_mutex_t *)bh_dl_dsym(linker, mutex_symbol);
+    if (NULL == bh_linker_g_dl_mutex && api_level == android_u_api)
+      bh_linker_g_dl_mutex = (pthread_mutex_t *)bh_dl_dsym(linker, BH_CONST_SYM_G_DL_MUTEX_U_QPR2);
+    if (NULL == bh_linker_g_dl_mutex) {
+      BH_LOG_SHOW("linker: mutex symbol not found (API %d)", api_level);
       goto err;
+    }
   }
 
   // for Android 7.0, 7.1

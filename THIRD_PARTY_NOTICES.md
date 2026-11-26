@@ -9,6 +9,8 @@ This project includes ideas and implementation patterns inspired by:
 
 The core Zygisk spoofing approach in this project was inspired by COPG and has been adapted for this module's use case.
 
+- [ByteHook](https://github.com/bytedance/bhook) by ByteDance is vendored at v1.0.9 (MIT). Its linker mutex symbol selection has been backported from [v1.1.2](https://github.com/bytedance/bhook/releases/tag/v1.1.2).
+
 ## License Responsibility
 
 When reusing, modifying, or redistributing this project:

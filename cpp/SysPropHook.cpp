@@ -4,7 +4,6 @@
 #include <string.h>
 #include <string_view>
 #include <sys/system_properties.h>
-#include <dlfcn.h>
 #include <bytehook.h>
 
 namespace gameunlocker {
@@ -129,15 +128,6 @@ static bool getSpoofedValue(const char* name, std::string& outValue) {
     return false;
 }
 typedef void (*T_Callback)(void*, const char*, const char*, uint32_t);
-typedef void (*prop_read_cb_fn_t)(const prop_info*, T_Callback, void*);
-typedef int (*prop_get_fn_t)(const char*, char*);
-typedef int (*prop_read_fn_t)(const prop_info*, char*, char*);
-
-static prop_read_cb_fn_t o_system_property_read_callback = nullptr;
-
-static prop_get_fn_t o_system_property_get = nullptr;
-
-static prop_read_fn_t o_system_property_read = nullptr;
 struct PropCallContext {
     T_Callback  realCallback;
 
@@ -159,44 +149,32 @@ static void my_modify_callback(void* cookie, const char* name, const char* value
     ctx->realCallback(ctx->realCookie, name, finalValue, serial);
 }
 
-static void my_system_property_read_callback(const prop_info* pi, T_Callback callback,
-
-                                              void* cookie) {
-    if (!o_system_property_read_callback) {
-        if (callback) callback(cookie, "", "", 0);
-        return;
-    }
+static void my_system_property_read_callback(const prop_info* pi, T_Callback callback, void* cookie) {
+    BYTEHOOK_STACK_SCOPE();
     if (pi && callback) {
         PropCallContext ctx{ callback, cookie };
-        o_system_property_read_callback(pi, my_modify_callback, &ctx);
+        BYTEHOOK_CALL_PREV(my_system_property_read_callback, pi, my_modify_callback, &ctx);
     } else {
-        o_system_property_read_callback(pi, callback, cookie);
+        BYTEHOOK_CALL_PREV(my_system_property_read_callback, pi, callback, cookie);
     }
 }
 
 static int my_system_property_get(const char* name, char* value) {
-    if (!name || !value) {
-        if (o_system_property_get) return o_system_property_get(name, value);
-        return 0;
-    }
+    BYTEHOOK_STACK_SCOPE();
 
     std::string spoofedVal;
-    if (getSpoofedValue(name, spoofedVal)) {
+    if (value && getSpoofedValue(name, spoofedVal)) {
         LOGD("SysPropHook: __system_property_get [%s]: -> '%s'", name, spoofedVal.c_str());
         strncpy(value, spoofedVal.c_str(), PROP_VALUE_MAX - 1);
         value[PROP_VALUE_MAX - 1] = '\0';
         return spoofedVal.length();
     }
-    if (o_system_property_get) {
-        return o_system_property_get(name, value);
-    }
-    return 0;
+    return BYTEHOOK_CALL_PREV(my_system_property_get, name, value);
 }
 
 static int my_system_property_read(const prop_info* pi, char* name, char* value) {
-    if (!o_system_property_read) return 0;
-
-    int ret = o_system_property_read(pi, name, value);
+    BYTEHOOK_STACK_SCOPE();
+    int ret = BYTEHOOK_CALL_PREV(my_system_property_read, pi, name, value);
     if (ret == 0 && name && value) {
 
         std::string spoofedVal;
@@ -209,82 +187,46 @@ static int my_system_property_read(const prop_info* pi, char* name, char* value)
     return ret;
 }
 
-static void on_hook_status(bytehook_stub_t , int status_code,
-                           const char* caller_path, const char* sym_name,
-
-                           void* , void* prev_func, void* ) {
+static void on_hook_status(bytehook_stub_t, int status_code,
+                           const char* caller_path, const char* sym_name, void*, void*, void*) {
     if (status_code == BYTEHOOK_STATUS_CODE_OK) {
-        if (prev_func) {
-            if (strcmp(sym_name, "__system_property_read_callback") == 0 && !o_system_property_read_callback) {
-                o_system_property_read_callback = reinterpret_cast<prop_read_cb_fn_t>(prev_func);
-            } else if (strcmp(sym_name, "__system_property_get") == 0 && !o_system_property_get) {
-                o_system_property_get = reinterpret_cast<prop_get_fn_t>(prev_func);
-            } else if (strcmp(sym_name, "__system_property_read") == 0 && !o_system_property_read) {
-                o_system_property_read = reinterpret_cast<prop_read_fn_t>(prev_func);
-            }
-        }
-        LOGI("SysPropHook: hook OK for %s in '%s' (prev=%p)",
-             sym_name, caller_path ? caller_path : "?", prev_func);
-    } else {
-        LOGE("SysPropHook: hook FAILED for %s in '%s' (status=%d)",
+        LOGI("SysPropHook: %s hook attached in '%s'", sym_name, caller_path ? caller_path : "?");
+    } else if (status_code != BYTEHOOK_STATUS_CODE_NOSYM) {
+        LOGW("SysPropHook: %s hook failed in '%s' (status=%d)",
              sym_name, caller_path ? caller_path : "?", status_code);
     }
 }
 
-bool SysPropHook::onEnable(const Context& ) {
-
-    int ret = bytehook_init(BYTEHOOK_MODE_AUTOMATIC, false);
-    if (ret != 0) {
+bool SysPropHook::onEnable(const Context&) {
+    const int ret = bytehook_init(BYTEHOOK_MODE_AUTOMATIC, false);
+    if (ret != BYTEHOOK_STATUS_CODE_OK) {
         LOGE("SysPropHook: bytehook_init failed (%d)", ret);
         return false;
     }
-    if (!o_system_property_read_callback) {
-
-        void* rawFn = dlsym(RTLD_DEFAULT, "__system_property_read_callback");
-        if (rawFn) {
-            o_system_property_read_callback = reinterpret_cast<prop_read_cb_fn_t>(rawFn);
-        }
-    }
-    if (!o_system_property_get) {
-
-        void* rawFn = dlsym(RTLD_DEFAULT, "__system_property_get");
-        if (rawFn) {
-            o_system_property_get = reinterpret_cast<prop_get_fn_t>(rawFn);
-        }
-    }
-    if (!o_system_property_read) {
-
-        void* rawFn = dlsym(RTLD_DEFAULT, "__system_property_read");
-        if (rawFn) {
-            o_system_property_read = reinterpret_cast<prop_read_fn_t>(rawFn);
-        }
-    }
-    bytehook_hook_all(
-        nullptr,                   
+    const auto readCallback = bytehook_hook_all(
+        nullptr,
         "__system_property_read_callback",
         reinterpret_cast<void*>(my_system_property_read_callback),
         on_hook_status,
         nullptr
     );
-    bytehook_hook_all(
+    const auto get = bytehook_hook_all(
         nullptr,
         "__system_property_get",
         reinterpret_cast<void*>(my_system_property_get),
         on_hook_status,
         nullptr
     );
-    bytehook_hook_all(
+    const auto read = bytehook_hook_all(
         nullptr,
         "__system_property_read",
         reinterpret_cast<void*>(my_system_property_read),
         on_hook_status,
         nullptr
     );
-    LOGI("SysPropHook: active (model='%s', cpu_only=%d)",
-         SysPropHook::getProfile().has_value()
-             ? SysPropHook::getProfile()->model.c_str() : "none",
-         SysPropHook::isCpuSpoofOnly() ? 1 : 0);
-    return true;
+    LOGI("SysPropHook: registrations (read_callback=%d, get=%d, read=%d)",
+         readCallback != nullptr, get != nullptr, read != nullptr);
+    return readCallback != nullptr || get != nullptr || read != nullptr;
 }
 REGISTER_HOOK(SysPropHook);
-} 
+}
