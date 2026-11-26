@@ -84,8 +84,6 @@ jobs:
 
       - name: Build companion app
         run: |
-          mkdir -p app/src/main/assets
-          cp webroot/index.html app/src/main/assets/
           gradle --no-daemon assembleRelease
           cp app/build/outputs/apk/release/app-release.apk GameUnlockerApp.apk
 
